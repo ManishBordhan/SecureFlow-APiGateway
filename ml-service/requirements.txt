@@ -1,0 +1,9 @@
+flask
+flask-cors
+pymongo
+scikit-learn
+pandas
+numpy
+joblib
+python-dotenv
+waitress

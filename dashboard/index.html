@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>API Gateway — Admin Dashboard</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+
+  <!-- ── Header ───────────────────────────────────────────── -->
+  <header>
+    <div class="header-left">
+      <div class="logo">⚡ API Gateway</div>
+      <span class="subtitle">Admin Dashboard</span>
+    </div>
+    <div class="header-right">
+      <span class="status-dot" id="socket-status-dot"></span>
+      <span id="socket-status">Connecting...</span>
+      <span class="divider">|</span>
+      <span id="current-time"></span>
+    </div>
+  </header>
+
+  <!-- ── Login overlay ────────────────────────────────────── -->
+  <div id="login-overlay">
+    <div class="login-box">
+      <h2>Admin Login</h2>
+      <p>Sign in with your admin account</p>
+      <input type="email"    id="login-email"    placeholder="Email" />
+      <input type="password" id="login-password" placeholder="Password" />
+      <button onclick="login()">Sign In</button>
+      <div id="login-error" class="error-msg"></div>
+    </div>
+  </div>
+
+  <!-- ── Main content ─────────────────────────────────────── -->
+  <main id="main-content" class="hidden">
+
+    <!-- ── Stat cards ───────────────────────────────────── -->
+    <section class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Requests (24h)</div>
+        <div class="stat-value" id="stat-requests">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Error rate</div>
+        <div class="stat-value" id="stat-errors">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg latency</div>
+        <div class="stat-value" id="stat-latency">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Abuse events (24h)</div>
+        <div class="stat-value" id="stat-abuse">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Active API keys</div>
+        <div class="stat-value" id="stat-keys">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Active users</div>
+        <div class="stat-value" id="stat-users">—</div>
+      </div>
+    </section>
+
+    <!-- ── Two column layout ─────────────────────────────── -->
+    <div class="two-col">
+
+      <!-- Live traffic feed -->
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Live traffic</h2>
+          <span class="live-badge">● LIVE</span>
+        </div>
+        <div class="traffic-feed" id="traffic-feed">
+          <div class="feed-empty">Waiting for requests...</div>
+        </div>
+      </section>
+
+      <!-- Abuse events -->
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Abuse events</h2>
+          <button class="btn-sm" onclick="loadAbuseEvents()">Refresh</button>
+        </div>
+        <div class="abuse-feed" id="abuse-feed">
+          <div class="feed-empty">No abuse events</div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ── Block / Unblock controls ──────────────────────── -->
+    <section class="panel">
+      <div class="panel-header">
+        <h2>IP management</h2>
+      </div>
+      <div class="ip-controls">
+        <div class="ip-input-group">
+          <input type="text" id="ip-input" placeholder="Enter IP address e.g. 192.168.1.1" />
+          <button class="btn-danger" onclick="blockIP()">Block IP</button>
+          <button class="btn-success" onclick="unblockIP()">Unblock IP</button>
+        </div>
+        <div id="ip-message" class="ip-message"></div>
+      </div>
+    </section>
+
+    <!-- ── Recent requests table ─────────────────────────── -->
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Recent requests</h2>
+        <button class="btn-sm" onclick="loadRequests()">Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table id="requests-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Method</th>
+              <th>Path</th>
+              <th>Status</th>
+              <th>Latency</th>
+              <th>IP</th>
+              <th>User</th>
+            </tr>
+          </thead>
+          <tbody id="requests-tbody">
+            <tr><td colspan="7" class="empty-row">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="js/dashboard.js"></script>
+</body>
+</html>
