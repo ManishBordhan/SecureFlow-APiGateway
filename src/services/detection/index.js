@@ -1,89 +1,56 @@
-const scorer   = require('./scorer');
-const blocker  = require('./blocker');
-const mlScorer = require('./mlScorer');
-const env      = require('../../config/env');
-const logger   = require('../../utils/logger');
-
-const THROTTLE_THRESHOLD = env.abuse.scoreThreshold * 0.6;
-const BLOCK_THRESHOLD    = env.abuse.scoreThreshold;
-const ML_BLOCK_SCORE     = 70; // ML score above this triggers block
-
-// ══════════════════════════════════════════════════════════════
-// Main detection pipeline
-// 1. Rule-based scoring (existing signals)
-// 2. ML-based anomaly scoring (new)
-// 3. Combined decision
-// ══════════════════════════════════════════════════════════════
+const scorer      = require('./scorer');
+const blocker     = require('./blocker');
+const mlScorer    = require('./mlScorer');
+const { getConfig } = require('../configService');
+const logger      = require('../../utils/logger');
 
 const detect = async (req, statusCode = 200, redisClient = null) => {
   try {
-    const ip = req.ip || '0.0.0.0';
+    const config = await getConfig();
+    const ip     = req.ip || '0.0.0.0';
 
-    // ── run rule-based and ML scoring in parallel ──────────
+    const BLOCK_THRESHOLD    = config.abuseThreshold;
+    const THROTTLE_THRESHOLD = Math.round(config.abuseThreshold * 0.6);
+
+    // run rule-based and ML scoring in parallel
     const [ruleResult, mlResult] = await Promise.all([
-      scorer.score(req, statusCode, redisClient),
-      mlScorer.getMLScore(ip),
+      scorer.score(req, statusCode, redisClient, config.signals),
+      config.mlEnabled ? mlScorer.getMLScore(ip, config.mlModel) : Promise.resolve(null),
     ]);
 
     const ruleScore = ruleResult.score;
-    const mlScore   = mlResult?.score || 0;
+    const mlScore   = mlResult?.score   || 0;
     const mlAnomaly = mlResult?.anomaly || false;
 
-    // ── combine scores ─────────────────────────────────────
-    // rule score counts 60%, ML score counts 40%
-    const combinedScore = Math.round((ruleScore * 0.6) + (mlScore * 0.4));
+    const ruleWeight = config.ruleWeight || 0.6;
+    const mlWeight   = config.mlWeight   || 0.4;
+    const combined   = Math.round((ruleScore * ruleWeight) + (mlScore * mlWeight));
 
-    logger.debug({
-      ip,
-      ruleScore,
-      mlScore,
-      mlAnomaly,
-      combinedScore,
-    }, 'Detection scores');
+    logger.debug({ ip, ruleScore, mlScore, combined }, 'Detection scores');
 
-    // ── build signal map ───────────────────────────────────
     const signals = { ...ruleResult.signals };
-    if (mlAnomaly) {
-      signals['mlAnomaly'] = Math.round(mlScore);
-    }
+    if (mlAnomaly) signals['mlAnomaly'] = Math.round(mlScore);
 
-    // ── immediate block — IP in blocklist ──────────────────
     if (ruleResult.signals['ipBlocklist'] === 100) {
-      return { action: 'block', score: combinedScore, signals };
+      return { action: 'block', score: combined, signals };
     }
 
-    // ── ML flagged as anomaly with high confidence ─────────
-    if (mlAnomaly && mlScore >= ML_BLOCK_SCORE) {
-      const userId = req.user?._id || null;
-      await blocker.blockIP(
-        ip,
-        { score: combinedScore, signals },
-        userId,
-        redisClient
-      );
-      return { action: 'block', score: combinedScore, signals };
+    if (mlAnomaly && mlScore >= 70) {
+      await blocker.blockIP(ip, { score: combined, signals }, req.user?._id || null, redisClient);
+      return { action: 'block', score: combined, signals };
     }
 
-    // ── combined score above block threshold ───────────────
-    if (combinedScore >= BLOCK_THRESHOLD) {
-      const userId = req.user?._id || null;
-      await blocker.blockIP(
-        ip,
-        { score: combinedScore, signals },
-        userId,
-        redisClient
-      );
-      return { action: 'block', score: combinedScore, signals };
+    if (combined >= BLOCK_THRESHOLD) {
+      await blocker.blockIP(ip, { score: combined, signals }, req.user?._id || null, redisClient);
+      return { action: 'block', score: combined, signals };
     }
 
-    // ── combined score above throttle threshold ────────────
-    if (combinedScore >= THROTTLE_THRESHOLD) {
-      const userId = req.user?._id || null;
-      await blocker.throttleIP(ip, { score: combinedScore, signals }, userId);
-      return { action: 'throttle', score: combinedScore, signals };
+    if (combined >= THROTTLE_THRESHOLD) {
+      await blocker.throttleIP(ip, { score: combined, signals }, req.user?._id || null);
+      return { action: 'throttle', score: combined, signals };
     }
 
-    return { action: 'allow', score: combinedScore, signals };
+    return { action: 'allow', score: combined, signals };
 
   } catch (err) {
     logger.error({ err }, 'Detection pipeline error');

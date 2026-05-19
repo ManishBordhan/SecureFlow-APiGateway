@@ -1,17 +1,11 @@
-const signals = require('./signals');
-const logger  = require('../../utils/logger');
+const signals  = require('./signals');
+const logger   = require('../../utils/logger');
 
-// ══════════════════════════════════════════════════════════════
-// Aggregates all signal scores into a single abuse score
-// Returns score, individual signals, and whether to block
-// ══════════════════════════════════════════════════════════════
-
-const score = async (req, statusCode = 200, redisClient = null) => {
+const score = async (req, statusCode = 200, redisClient = null, signalConfig = null) => {
   const ip        = req.ip || '0.0.0.0';
   const userAgent = req.headers['user-agent'] || 'unknown';
   const bytesIn   = parseInt(req.headers['content-length']) || 0;
 
-  // run all signals in parallel for performance
   const [
     rateSurgeResult,
     repeatedErrorsResult,
@@ -34,24 +28,26 @@ const score = async (req, statusCode = 200, redisClient = null) => {
     ipBlocklistResult,
   ];
 
-  // build signal map — only include signals that fired
   const signalMap = {};
   let totalScore  = 0;
 
   for (const result of results) {
-    if (result.score > 0) {
-      signalMap[result.signal] = result.score;
-      totalScore += result.score;
+    // check if signal is enabled in config
+    const signalEnabled = signalConfig
+      ? signalConfig[result.signal]?.enabled !== false
+      : true;
+
+    if (result.score > 0 && signalEnabled) {
+      // use config score if available, otherwise use default
+      const scoreValue = signalConfig?.[result.signal]?.score || result.score;
+      signalMap[result.signal] = scoreValue;
+      totalScore += scoreValue;
     }
   }
 
   logger.debug({ ip, totalScore, signalMap }, 'Abuse score calculated');
 
-  return {
-    ip,
-    score:   totalScore,
-    signals: signalMap,
-  };
+  return { ip, score: totalScore, signals: signalMap };
 };
 
 module.exports = { score };

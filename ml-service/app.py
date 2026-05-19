@@ -127,6 +127,90 @@ def model_info():
         'version':       '1.0.0',
     })
 
+# ══════════════════════════════════════════════════════════════
+# POST /score/lof — Local Outlier Factor scoring
+# ══════════════════════════════════════════════════════════════
+@app.route('/score/lof', methods=['POST'])
+def score_lof():
+    from sklearn.neighbors import LocalOutlierFactor
+    import numpy as np
+
+    data = request.get_json()
+    ip   = data.get('ip', '0.0.0.0')
+
+    feat_dict = extract_live_features(ip)
+
+    feature_vector = np.array([[
+        feat_dict['request_count'],
+        feat_dict['error_rate'],
+        feat_dict['avg_latency'],
+        feat_dict['unique_agents'],
+        feat_dict['unique_paths'],
+        feat_dict['unique_methods'],
+        feat_dict['avg_bytes_in'],
+    ]])
+
+    try:
+        X_scaled   = scaler.transform(feature_vector)
+        lof        = LocalOutlierFactor(n_neighbors=20, novelty=True, contamination=0.05)
+        lof.fit(X_scaled)
+        prediction = lof.predict(X_scaled)[0]
+        raw_score  = float(lof.score_samples(X_scaled)[0])
+        normalized = round(max(0, min(100, (-raw_score) * 100)), 2)
+        is_anomaly = bool(prediction == -1)
+
+        return jsonify({
+            'ip':      ip,
+            'anomaly': is_anomaly,
+            'score':   float(normalized),
+            'action':  'block' if is_anomaly else 'allow',
+            'model':   'lof',
+        })
+    except Exception as e:
+        return jsonify({ 'error': str(e) }), 400
+
+
+# ══════════════════════════════════════════════════════════════
+# POST /score/svm — One-Class SVM scoring
+# ══════════════════════════════════════════════════════════════
+@app.route('/score/svm', methods=['POST'])
+def score_svm():
+    from sklearn.svm import OneClassSVM
+    import numpy as np
+
+    data = request.get_json()
+    ip   = data.get('ip', '0.0.0.0')
+
+    feat_dict = extract_live_features(ip)
+
+    feature_vector = np.array([[
+        feat_dict['request_count'],
+        feat_dict['error_rate'],
+        feat_dict['avg_latency'],
+        feat_dict['unique_agents'],
+        feat_dict['unique_paths'],
+        feat_dict['unique_methods'],
+        feat_dict['avg_bytes_in'],
+    ]])
+
+    try:
+        X_scaled   = scaler.transform(feature_vector)
+        svm        = OneClassSVM(kernel='rbf', nu=0.05)
+        svm.fit(X_scaled)
+        prediction = svm.predict(X_scaled)[0]
+        raw_score  = float(svm.score_samples(X_scaled)[0])
+        normalized = round(max(0, min(100, (-raw_score) * 10)), 2)
+        is_anomaly = bool(prediction == -1)
+
+        return jsonify({
+            'ip':      ip,
+            'anomaly': is_anomaly,
+            'score':   float(normalized),
+            'action':  'block' if is_anomaly else 'allow',
+            'model':   'oneClassSvm',
+        })
+    except Exception as e:
+        return jsonify({ 'error': str(e) }), 400
 
 if __name__ == '__main__':
     load_model()
