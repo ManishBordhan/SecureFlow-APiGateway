@@ -1,5 +1,4 @@
 const express  = require('express');
-const path     = require('path');
 const helmet   = require('helmet');
 const cors     = require('cors');
 const morgan   = require('morgan');
@@ -47,7 +46,6 @@ app.use(
 app.use('/health',    healthRoutes);
 app.use('/auth',      authRoutes);
 app.use('/admin',     adminRoutes);
-app.use('/dashboard', express.static(path.join(__dirname, '..', 'dashboard')));
 app.use('/proxy',     proxyRoutes);  // all upstream requests go through /proxy/*
 
 // ── 404 ────────────────────────────────────────────────────────
